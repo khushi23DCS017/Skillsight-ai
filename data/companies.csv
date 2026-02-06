@@ -1,0 +1,7 @@
+name,min_cgpa,skills,salary
+Google,8.5,"['Python', 'C++', 'Data Structures', 'Machine Learning']",2500000
+Microsoft,8.0,"['C#', 'Azure', 'System Design', 'Python']",2000000
+TCS,6.5,"['Java', 'SQL', 'Communication']",450000
+Infosys,6.0,"['Python', 'Java', 'MySQL']",400000
+Accenture,6.5,"['Java', 'Cloud Computing', 'Communication']",600000
+StartupX,7.0,"['React', 'Node.js', 'MongoDB', 'AWS']",1200000
