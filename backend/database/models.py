@@ -12,8 +12,9 @@ class User(db.Model):
     role = db.Column(db.String(20), nullable=False)  # 'student' or 'faculty'
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    # Relationship
+    # Relationships
     student = db.relationship('Student', backref='user', uselist=False, cascade='all, delete-orphan')
+    faculty = db.relationship('Faculty', backref='user', uselist=False, cascade='all, delete-orphan')
     
     def to_dict(self):
         return {
@@ -22,6 +23,54 @@ class User(db.Model):
             'role': self.role,
             'created_at': self.created_at.isoformat()
         }
+
+class Faculty(db.Model):
+    __tablename__ = 'faculty'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    department = db.Column(db.String(100), nullable=False)
+    designation = db.Column(db.String(100), nullable=True)
+    experience_years = db.Column(db.Integer, nullable=True)
+    qualification = db.Column(db.String(200), nullable=True)
+    subjects = db.Column(db.Text, nullable=True)  # JSON string of subjects
+    specialization = db.Column(db.String(100), nullable=True)
+    skills = db.Column(db.Text, nullable=True)  # JSON string of skills
+    profile_completed = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    def to_dict(self):
+        import json
+        subjects_list = []
+        if self.subjects:
+            try:
+                subjects_list = json.loads(self.subjects)
+            except:
+                subjects_list = [self.subjects]
+        
+        skills_list = []
+        if self.skills:
+            try:
+                skills_list = json.loads(self.skills)
+            except:
+                skills_list = [self.skills]
+        
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'name': self.name,
+            'department': self.department,
+            'designation': self.designation,
+            'experience_years': self.experience_years,
+            'qualification': self.qualification,
+            'subjects': subjects_list,
+            'specialization': self.specialization,
+            'skills': skills_list,
+            'profile_completed': self.profile_completed,
+            'created_at': self.created_at.isoformat()
+        }
+
 
 class Student(db.Model):
     __tablename__ = 'students'
@@ -37,6 +86,7 @@ class Student(db.Model):
     projects = db.Column(db.Integer, default=0)
     placed = db.Column(db.Boolean, default=False)
     salary = db.Column(db.Float, nullable=True)
+    profile_data = db.Column(db.Text, nullable=True)  # JSON string for extended profile
     
     # Relationships
     skills = db.relationship('StudentSkill', backref='student', cascade='all, delete-orphan')
@@ -54,7 +104,8 @@ class Student(db.Model):
             'projects': self.projects,
             'placed': self.placed,
             'salary': self.salary,
-            'skills': [s.skill_name for s in self.skills]
+            'skills': [s.skill_name for s in self.skills],
+            'profile_data': self.profile_data
         }
 
 class StudentSkill(db.Model):

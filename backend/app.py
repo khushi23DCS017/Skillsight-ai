@@ -10,7 +10,7 @@ import tempfile
 import traceback
 
 # Database imports
-from database.models import db
+from database.models import db, User, Faculty
 from database.db_service import DatabaseService
 from auth.auth_service import AuthService
 
@@ -19,11 +19,25 @@ try:
     from ml_engine.inference import Predictor
     from ml_engine.resume_analyzer import ResumeAnalyzer
     from ml_engine.analytics import AnalyticsEngine
+    from ml_engine.prs_service import PRSService
+    from ml_engine.skill_gap_service import SkillGapService
+    from ml_engine.roadmap_service import RoadmapService
+    from ml_engine.learning_path_service import LearningPathService
+    from ml_engine.curriculum_advisor import CurriculumAdvisor
 except ImportError as e:
-    print(f"Import Error: {e}")
+    import traceback
+    with open("backend_import_error.log", "w") as f:
+        f.write(f"CRITICAL ML IMPORT ERROR: {e}\n")
+        f.write(traceback.format_exc())
+    print(f"CRITICAL ML IMPORT ERROR: {e}")
     Predictor = None
     ResumeAnalyzer = None
     AnalyticsEngine = None
+    PRSService = None
+    SkillGapService = None
+    RoadmapService = None
+    LearningPathService = None
+    CurriculumAdvisor = None
 
 app = Flask(__name__)
 CORS(app)
@@ -48,8 +62,9 @@ try:
     
     if ResumeAnalyzer:
         resume_analyzer = ResumeAnalyzer()
-        print("Resume Analyzer Loaded")
+        print("Resume Analyzer Loaded Successfully")
     else:
+        print("ResumeAnalyzer class is None, skipping initialization")
         resume_analyzer = None
     
     if AnalyticsEngine:
@@ -58,11 +73,58 @@ try:
     else:
         analytics_engine = None
         
+    if PRSService:
+        print("Attempting to initialize PRSService...")
+        prs_service = PRSService()
+        print("PRS Service Loaded Successfully")
+    else:
+        print("PRSService class is None, skipping initialization")
+        prs_service = None
+
+    if SkillGapService:
+        print("Attempting to initialize SkillGapService...")
+        skill_gap_service = SkillGapService()
+        print("SkillGap Service Loaded Successfully")
+    else:
+        print("SkillGapService class is None, skipping initialization")
+        skill_gap_service = None
+
+    if RoadmapService:
+        print("Attempting to initialize RoadmapService...")
+        roadmap_service = RoadmapService()
+        print("Roadmap Service Loaded Successfully")
+    else:
+        print("RoadmapService class is None, skipping initialization")
+        roadmap_service = None
+
+    if LearningPathService:
+        print("Attempting to initialize LearningPathService...")
+        learning_path_service = LearningPathService()
+        print("LearningPath Service Loaded Successfully")
+    else:
+        print("LearningPathService class is None, skipping initialization")
+        learning_path_service = None
+
+    if CurriculumAdvisor:
+        print("Attempting to initialize CurriculumAdvisor...")
+        curriculum_advisor = CurriculumAdvisor()
+        print("CurriculumAdvisor Service Loaded Successfully")
+    else:
+        print("CurriculumAdvisor class is None, skipping initialization")
+        curriculum_advisor = None
+        
 except Exception as e:
-    print(f"Error loading ML components: {e}")
+    import traceback
+    traceback.print_exc()
+    print(f"CRITICAL ML INIT ERROR: {e}")
     predictor = None
     resume_analyzer = None
     analytics_engine = None
+    prs_service = None
+    skill_gap_service = None
+    roadmap_service = None
+    learning_path_service = None
+    curriculum_advisor = None
 
 @app.route('/')
 def home():
@@ -97,12 +159,22 @@ def health():
 @app.route('/api/auth/register', methods=['POST'])
 def register():
     data = request.json
-    email = data.get('email')
+    email = data.get('email', '').strip().lower()
     password = data.get('password')
     role = data.get('role', 'student')
     
     if not email or not password:
         return jsonify({"error": "Email and password required"}), 400
+        
+    # Domain Validation
+    if role == 'student':
+        if not email.endswith('.edu.in'):
+            return jsonify({"error": "Student email must end with .edu.in"}), 400
+    elif role in ['faculty', 'admin', 'tpo']:
+        if not email.endswith('.ac.in'):
+             return jsonify({"error": f"{role.capitalize()} email must end with .ac.in"}), 400
+    else:
+        return jsonify({"error": "Invalid role"}), 400
     
     user, error = AuthService.register_user(email, password, role)
     if error:
@@ -188,11 +260,28 @@ def get_my_profile():
 def update_my_profile():
     user_id = get_jwt_identity()
     student = DatabaseService.get_student_by_user_id(user_id)
+    data = request.json
     
     if not student:
-        return jsonify({"error": "Student profile not found"}), 404
+        # Upsert: Create new student if not exists
+        try:
+            print(f"Upserting: Creating new profile for user {user_id}")
+            new_student = DatabaseService.create_student(
+                user_id=user_id,
+                name=data.get('name', 'Unknown'),
+                branch=data.get('branch', 'General'),
+                cgpa=float(data.get('cgpa', 0)),
+                tenth_marks=float(data.get('tenth_marks', 0)),
+                twelfth_marks=float(data.get('twelfth_marks', 0)),
+                internships=int(data.get('internships', 0)),
+                projects=int(data.get('projects', 0)),
+                skills=data.get('skills', [])
+            )
+            return jsonify(new_student), 201
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({"error": f"Failed to create profile: {str(e)}"}), 400
     
-    data = request.json
     updated = DatabaseService.update_student(student['id'], **data)
     return jsonify(updated), 200
 
@@ -271,6 +360,40 @@ def get_company_roadmap():
         return jsonify({"error": f"Company '{target_company}' not found"}), 404
     
     return jsonify(roadmap)
+
+@app.route('/api/analyze/resume', methods=['POST'])
+def analyze_resume():
+    if not resume_analyzer:
+        return jsonify({"error": "Resume Analyzer not available"}), 503
+        
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+        
+    file = request.files['file']
+    if not file.filename.endswith('.pdf'):
+        return jsonify({"error": "Only PDF files are supported"}), 400
+        
+    # Save temporarily
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp:
+            file.save(temp.name)
+            temp_path = temp.name
+            
+        result = resume_analyzer.analyze_resume(temp_path)
+        
+        # Clean up
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        
+        if "error" in result:
+             return jsonify(result), 400
+             
+        return jsonify(result), 200
+    except Exception as e:
+        if 'temp_path' in locals() and os.path.exists(temp_path):
+            os.remove(temp_path)
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/companies', methods=['GET'])
 def get_companies():
@@ -452,33 +575,276 @@ def get_dashboard_data():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-# ============ Resume Analysis Endpoint ============
 
-@app.route('/api/analyze/resume', methods=['POST'])
-def analyze_resume():
-    if not resume_analyzer:
-        return jsonify({"error": "Resume Analyzer not ready"}), 503
-    
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No file selected"}), 400
-    
-    if not file.filename.endswith('.pdf'):
-        return jsonify({"error": "Only PDF files are supported"}), 400
-    
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
-            file.save(tmp.name)
-            result = resume_analyzer.analyze_resume(tmp.name)
+
+@app.route('/api/analytics/prs', methods=['GET'])
+@jwt_required()
+def get_prs_score():
+    if not prs_service:
+        return jsonify({"error": "PRS Service not available"}), 503
         
-        os.unlink(tmp.name)
-        return jsonify(result)
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+    
+    if not user.student:
+        return jsonify({"error": "Student profile not found"}), 404
+        
+    student_data = user.student.to_dict()
+    result = prs_service.calculate_score(student_data)
+    
+    return jsonify(result), 200
+
+@app.route('/api/analytics/skill-gap', methods=['POST'])
+@jwt_required()
+def analyze_skill_gap():
+    if not skill_gap_service:
+        return jsonify({"error": "Skill Gap Service not available"}), 503
+        
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+    
+    if not user.student:
+        return jsonify({"error": "Student profile not found"}), 404
+        
+    data = request.get_json() or {}
+    mode = data.get('mode', 'role') # 'role' or 'peer'
+    role = data.get('target_role', 'Software Engineer')
+    
+    student_data = user.student.to_dict()
+    
+    if mode == 'peer':
+        result = skill_gap_service.analyze_peer_gap(student_data)
+    else:
+        result = skill_gap_service.analyze_role_gap(student_data, role)
+        
+    if "error" in result:
+        return jsonify(result), 400
+        
+    return jsonify(result), 200
+
+@app.route('/api/analytics/roadmap/companies', methods=['GET'])
+@jwt_required()
+def get_roadmap_companies():
+    if not roadmap_service:
+        return jsonify({"error": "Roadmap Service not available"}), 503
+    return jsonify(roadmap_service.get_all_companies()), 200
+
+@app.route('/api/analytics/roadmap', methods=['POST'])
+@jwt_required()
+def generate_roadmap():
+    if not roadmap_service:
+        return jsonify({"error": "Roadmap Service not available"}), 503
+        
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+    
+    if not user.student:
+        return jsonify({"error": "Student profile not found"}), 404
+        
+    data = request.get_json() or {}
+    company = data.get('company')
+    
+    if not company:
+        return jsonify({"error": "Target company is required"}), 400
+        
+    student_data = user.student.to_dict()
+    roadmap = roadmap_service.generate_roadmap(student_data, company)
+    
+    if "error" in roadmap:
+        return jsonify(roadmap), 400
+        
+    return jsonify(roadmap), 200
+
+@app.route('/api/recommend/learning-path/skills', methods=['GET'])
+@jwt_required()
+def get_learning_path_skills():
+    if not learning_path_service:
+        return jsonify({"error": "Learning Path Service not available"}), 503
+    return jsonify(learning_path_service.get_available_paths()), 200
+
+@app.route('/api/recommend/learning-path', methods=['POST'])
+@jwt_required()
+def generate_learning_path():
+    if not learning_path_service:
+        return jsonify({"error": "Learning Path Service not available"}), 503
+        
+    data = request.get_json() or {}
+    skill = data.get('skill')
+    
+    if not skill:
+        return jsonify({"error": "Skill name is required"}), 400
+        
+    path = learning_path_service.generate_path(skill)
+    
+    if "error" in path:
+        return jsonify(path), 404
+        
+    return jsonify(path), 200
+
+# ============ Faculty Analytics Endpoints ============
+
+@app.route('/api/faculty/analytics/skills', methods=['GET'])
+@jwt_required()
+def get_faculty_skill_analytics():
+    """Get aggregated skill gap analytics for faculty"""
+    if not curriculum_advisor:
+        return jsonify({"error": "Curriculum Advisor Service not available"}), 503
+    
+    claims = get_jwt()
+    if claims.get('role') != 'faculty':
+        return jsonify({"error": "Faculty access required"}), 403
+    
+    # Get all students
+    students = DatabaseService.get_all_students()
+    
+    # Analyze skill gaps
+    analysis = curriculum_advisor.analyze_skill_gaps(students)
+    
+    if "error" in analysis:
+        return jsonify(analysis), 400
+    
+    return jsonify(analysis), 200
+
+@app.route('/api/faculty/recommendations', methods=['GET'])
+@jwt_required()
+def get_faculty_recommendations():
+    """Get AI-driven curriculum improvement recommendations"""
+    if not curriculum_advisor:
+        return jsonify({"error": "Curriculum Advisor Service not available"}), 503
+    
+    claims = get_jwt()
+    if claims.get('role') != 'faculty':
+        return jsonify({"error": "Faculty access required"}), 403
+    
+    # Get all students
+    students = DatabaseService.get_all_students()
+    
+    # Analyze skill gaps
+    analysis = curriculum_advisor.analyze_skill_gaps(students)
+    
+    if "error" in analysis:
+        return jsonify(analysis), 400
+    
+    # Generate recommendations
+    recommendations = curriculum_advisor.suggest_improvements(analysis)
+    
+    return jsonify(recommendations), 200
+
+# ============ Faculty Profile Endpoints ============
+
+@app.route('/api/faculty/profile', methods=['GET'])
+@jwt_required()
+def get_faculty_profile():
+    """Get current faculty profile"""
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+    
+    if not user or user.role != 'faculty':
+        return jsonify({"error": "Faculty access required"}), 403
+    
+    faculty = Faculty.query.filter_by(user_id=current_user_id).first()
+    
+    if not faculty:
+        return jsonify({"profile_completed": False, "faculty": None}), 200
+    
+    return jsonify({"profile_completed": faculty.profile_completed, "faculty": faculty.to_dict()}), 200
+
+@app.route('/api/faculty/profile', methods=['POST'])
+@jwt_required()
+def create_or_update_faculty_profile():
+    """Create or update faculty profile"""
+    current_user_id = get_jwt_identity()
+    user = User.query.get(current_user_id)
+    
+    if not user or user.role != 'faculty':
+        return jsonify({"error": "Faculty access required"}), 403
+    
+    data = request.json
+    name = data.get('name')
+    department = data.get('department')
+    designation = data.get('designation')
+    experience_years = data.get('experience_years')
+    qualification = data.get('qualification')
+    subjects = data.get('subjects', [])
+    specialization = data.get('specialization')
+    skills = data.get('skills', [])
+    
+    if not name or not department:
+        return jsonify({"error": "Name and department are required"}), 400
+    
+    # Convert subjects and skills to JSON strings if they're not already
+    import json
+    subjects_json = subjects if isinstance(subjects, str) else json.dumps(subjects)
+    skills_json = skills if isinstance(skills, str) else json.dumps(skills)
+    
+    # Check if profile exists
+    faculty = Faculty.query.filter_by(user_id=current_user_id).first()
+    
+    if faculty:
+        # Update existing profile
+        faculty.name = name
+        faculty.department = department
+        faculty.designation = designation
+        faculty.experience_years = experience_years
+        faculty.qualification = qualification
+        faculty.subjects = subjects_json
+        faculty.specialization = specialization
+        faculty.skills = skills_json
+        faculty.profile_completed = True
+    else:
+        # Create new profile
+        faculty = Faculty(
+            user_id=current_user_id,
+            name=name,
+            department=department,
+            designation=designation,
+            experience_years=experience_years,
+            qualification=qualification,
+            subjects=subjects_json,
+            specialization=specialization,
+            skills=skills_json,
+            profile_completed=True
+        )
+        db.session.add(faculty)
+    
+    db.session.commit()
+    
+    return jsonify({"message": "Profile saved successfully", "faculty": faculty.to_dict()}), 200
+
+@app.route('/api/faculty/analytics/branch/<branch>', methods=['GET'])
+@jwt_required()
+def get_branch_analytics(branch):
+    """Get analytics for a specific branch"""
+    claims = get_jwt()
+    if claims.get('role') != 'faculty':
+        return jsonify({"error": "Faculty access required"}), 403
+    
+    # Get all students from the specified branch
+    students = DatabaseService.get_all_students()
+    branch_students = [s for s in students if s.get('branch', '').lower() == branch.lower()]
+    
+    if not branch_students:
+        return jsonify({"error": f"No students found in {branch} branch"}), 404
+    
+    # Calculate branch-specific analytics
+    total = len(branch_students)
+    placed = sum(1 for s in branch_students if s.get('placed', False))
+    avg_cgpa = sum(s.get('cgpa', 0) for s in branch_students) / total if total > 0 else 0
+    
+    # Aggregate skills
+    all_skills = set()
+    for student in branch_students:
+        all_skills.update(student.get('skills', []))
+    
+    return jsonify({
+        'branch': branch,
+        'total_students': total,
+        'placed_students': placed,
+        'placement_rate': round((placed / total * 100), 2) if total > 0 else 0,
+        'avg_cgpa': round(avg_cgpa, 2),
+        'unique_skills': len(all_skills),
+        'top_skills': list(all_skills)[:10]
+    }), 200
 
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)

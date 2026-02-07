@@ -28,7 +28,7 @@ class DatabaseService:
     
     @staticmethod
     def create_student(user_id, name, branch, cgpa, tenth_marks, twelfth_marks, 
-                      internships=0, projects=0, skills=None):
+                      internships=0, projects=0, skills=None, profile_data=None):
         """Create a new student record"""
         student = Student(
             user_id=user_id,
@@ -38,7 +38,8 @@ class DatabaseService:
             tenth_marks=tenth_marks,
             twelfth_marks=twelfth_marks,
             internships=internships,
-            projects=projects
+            projects=projects,
+            profile_data=profile_data
         )
         db.session.add(student)
         db.session.flush()  # Get student ID
