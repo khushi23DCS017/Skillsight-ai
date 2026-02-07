@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { User, Mail, Lock, GraduationCap, BookOpen, Code } from 'lucide-react';
+import { User, Mail, Lock, GraduationCap } from 'lucide-react';
 
 const Register = () => {
     const [formData, setFormData] = useState({
@@ -8,13 +8,7 @@ const Register = () => {
         password: '',
         confirmPassword: '',
         name: '',
-        branch: 'CSE',
-        cgpa: '',
-        tenth_marks: '',
-        twelfth_marks: '',
-        internships: 0,
-        projects: 0,
-        skills: ''
+        role: 'student'
     });
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
@@ -31,6 +25,19 @@ const Register = () => {
             return;
         }
 
+        // Domain Validation
+        const email = formData.email.toLowerCase();
+        if (formData.role === 'student' && !email.endsWith('.edu.in')) {
+            setError('Student email must end with .edu.in');
+            setLoading(false);
+            return;
+        }
+        if (['faculty', 'admin', 'tpo'].includes(formData.role) && !email.endsWith('.ac.in')) {
+            setError(`${formData.role.charAt(0).toUpperCase() + formData.role.slice(1)} email must end with .ac.in`);
+            setLoading(false);
+            return;
+        }
+
         try {
             // Register user
             const registerResponse = await fetch('http://localhost:5000/api/auth/register', {
@@ -39,7 +46,7 @@ const Register = () => {
                 body: JSON.stringify({
                     email: formData.email,
                     password: formData.password,
-                    role: 'student'
+                    role: formData.role
                 })
             });
 
@@ -67,36 +74,43 @@ const Register = () => {
                 localStorage.setItem('token', loginData.access_token);
                 localStorage.setItem('user', JSON.stringify(loginData.user));
 
-                const skills = formData.skills.split(',').map(s => s.trim()).filter(s => s);
+                // If student, create profile. Others skip for now (or need separate profile flow)
+                if (formData.role === 'student') {
+                    const profileResponse = await fetch('http://localhost:5000/api/students', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${loginData.access_token}`
+                        },
+                        body: JSON.stringify({
+                            user_id: loginData.user.id,
+                            name: formData.name,
+                            branch: 'General',
+                            cgpa: 0.0,
+                            tenth_marks: 0.0,
+                            twelfth_marks: 0.0,
+                            internships: 0,
+                            projects: 0,
+                            skills: []
+                        })
+                    });
 
-                const profileResponse = await fetch('http://localhost:5000/api/students', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${loginData.access_token}`
-                    },
-                    body: JSON.stringify({
-                        user_id: loginData.user.id,
-                        name: formData.name,
-                        branch: formData.branch,
-                        cgpa: parseFloat(formData.cgpa) || 0,
-                        tenth_marks: parseFloat(formData.tenth_marks) || 0,
-                        twelfth_marks: parseFloat(formData.twelfth_marks) || 0,
-                        internships: parseInt(formData.internships) || 0,
-                        projects: parseInt(formData.projects) || 0,
-                        skills: skills
-                    })
-                });
-
-                if (!profileResponse.ok) {
-                    const profileError = await profileResponse.json();
-                    setError("Account created but profile failed: " + (profileError.error || "Unknown error"));
-                    setLoading(false);
-                    return;
+                    if (!profileResponse.ok) {
+                        const profileError = await profileResponse.json();
+                        setError("Account created but profile failed: " + (profileError.error || "Unknown error"));
+                        setLoading(false);
+                        return;
+                    }
                 }
 
-                // Only navigate if BOTH succeeded
-                navigate('/student');
+                // Redirect based on role
+                switch (formData.role) {
+                    case 'student': navigate('/student'); break;
+                    case 'faculty': navigate('/faculty'); break;
+                    case 'admin': navigate('/admin'); break;
+                    case 'tpo': navigate('/tpo'); break;
+                    default: navigate('/login');
+                }
             }
         } catch (err) {
             setError('Failed to connect to server');
@@ -107,155 +121,96 @@ const Register = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-8">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8">
                 <div className="text-center mb-6">
                     <div className="flex justify-center mb-3">
                         <GraduationCap className="w-12 h-12 text-blue-600" />
                     </div>
-                    <h1 className="text-2xl font-bold text-gray-800">Student Registration</h1>
-                    <p className="text-gray-600 text-sm mt-1">Create your SkillSight account</p>
+                    <h1 className="text-2xl font-bold text-gray-800">Create Account</h1>
+                    <p className="text-gray-600 text-sm mt-1">Join SkillSight AI</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">I am a...</label>
+                        <select
+                            value={formData.role}
+                            onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                        >
+                            <option value="student">Student</option>
+                            <option value="faculty">Faculty</option>
+                            <option value="tpo">Training & Placement Officer (TPO)</option>
+                            <option value="admin">Administrator</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                        <div className="relative">
+                            <User className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
                             <input
                                 type="text"
                                 value={formData.name}
                                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="John Doe"
                                 required
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                            <input
-                                type="email"
-                                value={formData.email}
-                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                required
-                            />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                            <input
-                                type="password"
-                                value={formData.password}
-                                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
-                            <input
-                                type="password"
-                                value={formData.confirmPassword}
-                                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                required
-                            />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
-                            <select
-                                value={formData.branch}
-                                onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            >
-                                <option value="CSE">CSE</option>
-                                <option value="IT">IT</option>
-                                <option value="ECE">ECE</option>
-                                <option value="MECH">Mechanical</option>
-                                <option value="CIVIL">Civil</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">CGPA</label>
-                            <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                max="10"
-                                value={formData.cgpa}
-                                onChange={(e) => setFormData({ ...formData, cgpa: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                required
-                            />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">10th Marks (%)</label>
-                            <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                value={formData.tenth_marks}
-                                onChange={(e) => setFormData({ ...formData, tenth_marks: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">12th Marks (%)</label>
-                            <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                value={formData.twelfth_marks}
-                                onChange={(e) => setFormData({ ...formData, twelfth_marks: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                required
-                            />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Internships</label>
-                            <input
-                                type="number"
-                                min="0"
-                                value={formData.internships}
-                                onChange={(e) => setFormData({ ...formData, internships: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Projects</label>
-                            <input
-                                type="number"
-                                min="0"
-                                value={formData.projects}
-                                onChange={(e) => setFormData({ ...formData, projects: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                             />
                         </div>
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Skills (comma separated)</label>
-                        <input
-                            type="text"
-                            value={formData.skills}
-                            onChange={(e) => setFormData({ ...formData, skills: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            placeholder="Python, Java, React, SQL"
-                        />
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                        <div className="relative">
+                            <Mail className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+                            <input
+                                type="email"
+                                value={formData.email}
+                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder={formData.role === 'student' ? "student@college.edu.in" : "staff@college.ac.in"}
+                                required
+                            />
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                            {formData.role === 'student' ? 'Must end with .edu.in' : 'Must end with .ac.in'}
+                        </p>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                        <div className="relative">
+                            <Lock className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+                            <input
+                                type="password"
+                                value={formData.password}
+                                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="••••••••"
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
+                        <div className="relative">
+                            <Lock className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+                            <input
+                                type="password"
+                                value={formData.confirmPassword}
+                                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="••••••••"
+                                required
+                            />
+                        </div>
                     </div>
 
                     {error && (
-                        <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+                        <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center gap-2">
+                            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
                             {error}
                         </div>
                     )}

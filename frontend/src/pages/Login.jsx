@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Lock, Mail, User, GraduationCap } from 'lucide-react';
-
+import { Lock, Mail, User, GraduationCap, Briefcase } from 'lucide-react';
 const Login = ({ onLogin }) => {
     const [role, setRole] = useState('student');
     const [email, setEmail] = useState('');
@@ -9,6 +8,13 @@ const Login = ({ onLogin }) => {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
+
+    const roleConfig = {
+        student: { label: 'Student', icon: <GraduationCap className="w-16 h-16 text-blue-600" />, color: 'blue' },
+        faculty: { label: 'Faculty', icon: <User className="w-16 h-16 text-purple-600" />, color: 'purple' },
+        tpo: { label: 'TPO', icon: <Briefcase className="w-16 h-16 text-orange-600" />, color: 'orange' },
+        admin: { label: 'Admin', icon: <Lock className="w-16 h-16 text-red-600" />, color: 'red' }
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -25,17 +31,25 @@ const Login = ({ onLogin }) => {
             const data = await response.json();
 
             if (response.ok) {
-                // Store token and user info
+                // Check if the user's actual role matches the selected role
+                if (data.user.role !== role) {
+                    setError(`Access denied. You are not registered as a ${roleConfig[role].label}.`);
+                    setLoading(false);
+                    return;
+                }
+
                 localStorage.setItem('token', data.access_token);
                 localStorage.setItem('user', JSON.stringify(data.user));
 
                 if (onLogin) onLogin(data.user);
 
                 // Redirect based on role
-                if (data.user.role === 'faculty') {
-                    navigate('/faculty');
-                } else {
-                    navigate('/student');
+                switch (data.user.role) {
+                    case 'student': navigate('/student'); break;
+                    case 'faculty': navigate('/faculty'); break;
+                    case 'admin': navigate('/admin'); break;
+                    case 'tpo': navigate('/tpo'); break;
+                    default: navigate('/student');
                 }
             } else {
                 setError(data.error || 'Login failed');
@@ -47,34 +61,36 @@ const Login = ({ onLogin }) => {
         }
     };
 
+    const activeColor = roleConfig[role].color;
+
     return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8">
-                <div className="flex mb-8 bg-gray-100 rounded-lg p-1">
-                    <button
-                        className={`flex-1 py-2 rounded-md text-sm font-semibold transition ${role === 'student' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-                        onClick={() => setRole('student')}
-                    >
-                        Student
-                    </button>
-                    <button
-                        className={`flex-1 py-2 rounded-md text-sm font-semibold transition ${role === 'faculty' ? 'bg-white shadow text-purple-600' : 'text-gray-500 hover:text-gray-700'}`}
-                        onClick={() => setRole('faculty')}
-                    >
-                        Faculty
-                    </button>
+        <div className={`min-h-screen bg-gradient-to-br from-${activeColor}-600/90 to-slate-800 flex items-center justify-center p-4 transition-colors duration-500`}>
+            <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-8">
+
+                {/* Role Tabs */}
+                <div className="flex bg-gray-100 rounded-xl p-1 mb-8 overflow-hidden">
+                    {Object.keys(roleConfig).map((r) => (
+                        <button
+                            key={r}
+                            onClick={() => setRole(r)}
+                            className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${role === r
+                                ? 'bg-white shadow text-gray-800'
+                                : 'text-gray-400 hover:text-gray-600'
+                                }`}
+                        >
+                            {roleConfig[r].label}
+                        </button>
+                    ))}
                 </div>
 
                 <div className="text-center mb-8">
-                    <div className="flex justify-center mb-4">
-                        {role === 'student' ? (
-                            <GraduationCap className="w-16 h-16 text-blue-600" />
-                        ) : (
-                            <User className="w-16 h-16 text-purple-600" />
-                        )}
+                    <div className="flex justify-center mb-4 transition-transform duration-300 transform hover:scale-110">
+                        {roleConfig[role].icon}
                     </div>
-                    <h1 className="text-3xl font-bold text-gray-800">SkillSight AI</h1>
-                    <p className="text-gray-600 mt-2">{role === 'student' ? 'Student Portal Login' : 'Faculty Portal Login'}</p>
+                    <h1 className="text-3xl font-bold text-gray-800">Welcome Back</h1>
+                    <p className="text-gray-500 mt-2 font-medium">
+                        Log in to <span className={`text-${activeColor}-600`}>{roleConfig[role].label} Portal</span>
+                    </p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
@@ -88,8 +104,8 @@ const Login = ({ onLogin }) => {
                                 type="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                placeholder={role === 'student' ? "student@college.edu" : "faculty@college.edu"}
+                                className={`w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-${activeColor}-500 focus:border-${activeColor}-500 transition-all`}
+                                placeholder={`name@college.${role === 'student' ? 'edu' : 'ac'}.in`}
                                 required
                             />
                         </div>
@@ -105,7 +121,7 @@ const Login = ({ onLogin }) => {
                                 type="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                className={`w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-${activeColor}-500 focus:border-${activeColor}-500 transition-all`}
                                 placeholder="••••••••"
                                 required
                             />
@@ -113,7 +129,8 @@ const Login = ({ onLogin }) => {
                     </div>
 
                     {error && (
-                        <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+                        <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center gap-2 animate-pulse">
+                            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
                             {error}
                         </div>
                     )}
@@ -121,24 +138,19 @@ const Login = ({ onLogin }) => {
                     <button
                         type="submit"
                         disabled={loading}
-                        className={`w-full text-white py-3 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${role === 'student' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-purple-600 hover:bg-purple-700'}`}
+                        className={`w-full text-white py-3 rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed`}
+                        style={{ backgroundColor: role === 'student' ? '#2563eb' : role === 'faculty' ? '#9333ea' : role === 'tpo' ? '#ea580c' : '#dc2626' }}
                     >
-                        {loading ? 'Signing in...' : 'Sign In'}
+                        {loading ? 'Authenticating...' : `Login as ${roleConfig[role].label}`}
                     </button>
                 </form>
 
                 <div className="mt-6 text-center">
                     <p className="text-sm text-gray-600">
                         Don't have an account?{' '}
-                        {role === 'student' ? (
-                            <Link to="/register" className="text-blue-600 hover:text-blue-700 font-semibold hover:underline">
-                                Register as Student
-                            </Link>
-                        ) : (
-                            <Link to="/register-faculty" className="text-purple-600 hover:text-purple-700 font-semibold hover:underline">
-                                Register as Faculty
-                            </Link>
-                        )}
+                        <Link to="/register" className={`text-${activeColor}-600 hover:text-${activeColor}-700 font-semibold hover:underline`}>
+                            Create Account
+                        </Link>
                     </p>
                 </div>
             </div>

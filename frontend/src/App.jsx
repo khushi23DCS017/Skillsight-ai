@@ -5,6 +5,10 @@ import Register from './pages/Register';
 import FacultyRegister from './pages/FacultyRegister';
 import StudentDashboard from './pages/StudentDashboard';
 import FacultyDashboard from './pages/FacultyDashboard';
+import FacultyProfileForm from './pages/FacultyProfileForm';
+import AdminDashboard from './pages/AdminDashboard';
+import TPODashboard from './pages/TPODashboard';
+import CompleteProfile from './pages/CompleteProfile';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -50,10 +54,46 @@ function App() {
         />
 
         <Route
+          path="/student/complete-profile"
+          element={
+            <ProtectedRoute allowedRole="student">
+              <CompleteProfile />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/faculty/profile"
+          element={
+            <ProtectedRoute allowedRole="faculty">
+              <FacultyProfileForm />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/faculty"
           element={
             <ProtectedRoute allowedRole="faculty">
               <FacultyDashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute allowedRole="admin">
+              <AdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/tpo"
+          element={
+            <ProtectedRoute allowedRole="tpo">
+              <TPODashboard />
             </ProtectedRoute>
           }
         />

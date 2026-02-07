@@ -1,178 +1,184 @@
-import React, { useState, useEffect } from 'react';
-import { BookOpen, CheckCircle, Clock, AlertTriangle, ChevronRight } from 'lucide-react';
 
-const TrainingRoadmap = ({ student }) => {
-    const [companies, setCompanies] = useState([]);
-    const [targetCompany, setTargetCompany] = useState('');
-    const [roadmap, setRoadmap] = useState(null);
+import React, { useState, useEffect } from 'react';
+import { BookOpen, CheckCircle, Circle, PlayCircle, FileText, Code, ChevronRight, ChevronDown } from 'lucide-react';
+
+const TrainingRoadmap = () => {
+    const [skills, setSkills] = useState([]);
+    const [selectedSkill, setSelectedSkill] = useState('');
+    const [learningPath, setLearningPath] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
+    const [error, setError] = useState(null);
+    const [expandedWeek, setExpandedWeek] = useState(null);
 
     useEffect(() => {
-        fetchCompanies();
+        fetchSkills();
     }, []);
 
-    const fetchCompanies = async () => {
+    const fetchSkills = async () => {
         try {
-            const response = await fetch('http://localhost:5000/api/companies');
+            const token = localStorage.getItem('token');
+            const response = await fetch('http://localhost:5000/api/recommend/learning-path/skills', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
             if (response.ok) {
                 const data = await response.json();
-                setCompanies(data);
+                setSkills(data);
             }
         } catch (err) {
-            console.error("Failed to fetch companies");
+            console.error("Failed to fetch skills", err);
         }
     };
 
-    const handleGetRoadmap = async () => {
-        if (!targetCompany) {
-            setError("Please select a target company");
-            return;
-        }
-
+    const fetchPath = async (skill) => {
         setLoading(true);
-        setError('');
-        setRoadmap(null);
-
+        setError(null);
+        setLearningPath(null);
+        setExpandedWeek(1); // Auto-expand first week
         try {
-            const response = await fetch('http://localhost:5000/api/recommend/skills', {
+            const token = localStorage.getItem('token');
+            const response = await fetch('http://localhost:5000/api/recommend/learning-path', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    skills: student.skills || [],
-                    target_company: targetCompany
-                })
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ skill })
             });
 
             if (response.ok) {
                 const data = await response.json();
-                setRoadmap(data);
+                setLearningPath(data);
             } else {
                 const err = await response.json();
-                setError(err.error || "Failed to generate roadmap");
+                setError(err.error || "Failed to generate learning path");
             }
         } catch (err) {
-            setError("Failed to connect to server");
+            setError("Network error. Please try again.");
         } finally {
             setLoading(false);
         }
     };
 
-    return (
-        <div className="bg-white rounded-xl shadow-md p-6">
-            <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center">
-                <BookOpen className="w-6 h-6 mr-2 text-blue-600" />
-                Personalized Training Roadmap
-            </h2>
+    const handleSkillChange = (e) => {
+        const skill = e.target.value;
+        setSelectedSkill(skill);
+        if (skill) {
+            fetchPath(skill);
+        }
+    };
 
-            <div className="mb-8 p-6 bg-blue-50 rounded-xl border border-blue-100">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Select Target Dream Company</label>
-                <div className="flex gap-4">
+    const toggleWeek = (week) => {
+        setExpandedWeek(expandedWeek === week ? null : week);
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                        <BookOpen className="w-6 h-6 text-indigo-600" />
+                        Micro-Learning Paths
+                    </h2>
+                    <p className="text-gray-600">Master a new skill with a week-by-week plan.</p>
+                </div>
+
+                <div className="w-full md:w-64">
                     <select
-                        value={targetCompany}
-                        onChange={(e) => setTargetCompany(e.target.value)}
-                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        value={selectedSkill}
+                        onChange={handleSkillChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
                     >
-                        <option value="">-- Choose Company --</option>
-                        {companies.map(c => (
-                            <option key={c.id} value={c.name}>{c.name}</option>
+                        <option value="">Select Skill to Learn</option>
+                        {skills.map(s => (
+                            <option key={s} value={s}>{s}</option>
                         ))}
                     </select>
-                    <button
-                        onClick={handleGetRoadmap}
-                        disabled={loading}
-                        className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition disabled:opacity-50"
-                    >
-                        {loading ? 'Generating...' : 'Get Roadmap'}
-                    </button>
                 </div>
-                {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
             </div>
 
-            {roadmap && (
-                <div className="space-y-8 animate-fade-in">
-                    {/* Summary Card */}
-                    <div className="flex flex-col md:flex-row gap-6">
-                        <div className="flex-1 bg-gradient-to-vr from-gray-50 to-white border border-gray-200 rounded-xl p-6">
-                            <h3 className="text-lg font-bold text-gray-800 mb-2">Completion Status</h3>
-                            <div className="flex items-end gap-2 mb-2">
-                                <span className="text-4xl font-bold text-blue-600">{roadmap.completion_percentage}%</span>
-                                <span className="text-gray-500 mb-1">Aligned with requirements</span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2.5">
-                                <div
-                                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-1000"
-                                    style={{ width: `${roadmap.completion_percentage}%` }}
-                                ></div>
-                            </div>
-                        </div>
+            {loading && (
+                <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+                    <p className="text-gray-500">Generating your learning path...</p>
+                </div>
+            )}
 
-                        <div className="flex-1 bg-green-50 border border-green-100 rounded-xl p-6">
-                            <h3 className="text-lg font-bold text-green-800 mb-4 flex items-center">
-                                <CheckCircle className="w-5 h-5 mr-2" />
-                                Skills You Have
-                            </h3>
-                            <div className="flex flex-wrap gap-2">
-                                {roadmap.has_skills && roadmap.has_skills.length > 0 ? (
-                                    roadmap.has_skills.map((skill, idx) => (
-                                        <span key={idx} className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium border border-green-200">
-                                            {skill}
-                                        </span>
-                                    ))
-                                ) : (
-                                    <span className="text-gray-500 text-sm italic">No matching skills yet. Keep learning!</span>
-                                )}
-                            </div>
-                        </div>
+            {error && (
+                <div className="bg-red-50 text-red-600 p-4 rounded-lg">
+                    {error}
+                </div>
+            )}
+
+            {!loading && learningPath && (
+                <div className="space-y-6 animate-fadeIn">
+                    <div className="bg-gradient-to-r from-indigo-600 to-purple-700 rounded-xl p-6 text-white shadow-lg">
+                        <h3 className="text-3xl font-bold mb-2">{learningPath.title}</h3>
+                        <p className="text-indigo-100">{learningPath.description}</p>
                     </div>
 
-                    {/* Skill Gap Roadmap */}
-                    <div>
-                        <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
-                            <AlertTriangle className="w-5 h-5 mr-2 text-orange-500" />
-                            Skill Gap Analysis & Training Plan
-                        </h3>
-
-                        {roadmap.roadmap && roadmap.roadmap.length > 0 ? (
-                            <div className="space-y-4">
-                                {roadmap.roadmap.map((item, idx) => (
-                                    <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                        <div className="flex items-start gap-4">
-                                            <div className={`
-                                                w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0
-                                                ${item.priority === 'Critical' ? 'bg-red-100 text-red-600' :
-                                                    item.priority === 'Important' ? 'bg-orange-100 text-orange-600' :
-                                                        'bg-blue-100 text-blue-600'}
-                                            `}>
-                                                {idx + 1}
-                                            </div>
-                                            <div>
-                                                <h4 className="font-bold text-gray-800 text-lg">{item.skill}</h4>
-                                                <span className={`
-                                                    inline-block px-2 py-0.5 rounded text-xs font-semibold mt-1
-                                                    ${item.priority === 'Critical' ? 'bg-red-50 text-red-600' :
-                                                        item.priority === 'Important' ? 'bg-orange-50 text-orange-600' :
-                                                            'bg-blue-50 text-blue-600'}
-                                                `}>
-                                                    {item.priority} Priority
-                                                </span>
-                                            </div>
+                    <div className="space-y-4">
+                        {learningPath.modules.map((module) => (
+                            <div key={module.week} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                                <button
+                                    onClick={() => toggleWeek(module.week)}
+                                    className="w-full flex items-center justify-between p-5 hover:bg-gray-50 transition-colors text-left"
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className={`flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm ${expandedWeek === module.week ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                                            W{module.week}
                                         </div>
-
-                                        <div className="flex items-center text-gray-500 text-sm bg-gray-50 px-4 py-2 rounded-lg whitespace-nowrap">
-                                            <Clock className="w-4 h-4 mr-2" />
-                                            Est. Time: {item.estimated_weeks} Weeks
+                                        <div>
+                                            <h4 className="font-bold text-gray-800">{module.topic}</h4>
+                                            <p className="text-sm text-gray-500">{module.tasks.length} Tasks</p>
                                         </div>
                                     </div>
-                                ))}
+                                    {expandedWeek === module.week ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronRight className="w-5 h-5 text-gray-400" />}
+                                </button>
+
+                                {expandedWeek === module.week && (
+                                    <div className="p-5 pt-0 border-t border-gray-100 bg-gray-50/50">
+                                        <div className="mt-4 space-y-4">
+                                            <div>
+                                                <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Objectives</h5>
+                                                <ul className="space-y-2">
+                                                    {module.tasks.map((task, idx) => (
+                                                        <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
+                                                            <div className="mt-0.5"><CheckCircle className="w-4 h-4 text-green-500" /></div>
+                                                            {task}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+
+                                            <div>
+                                                <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Resources</h5>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                    {module.resources.map((res, idx) => (
+                                                        <a key={idx} href="#" className="flex items-center gap-2 p-3 bg-white border border-gray-200 rounded-lg hover:border-indigo-300 hover:shadow-sm transition-all text-sm group">
+                                                            <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded group-hover:bg-indigo-100">
+                                                                {idx % 2 === 0 ? <PlayCircle className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                                                            </div>
+                                                            <span className="text-gray-700 group-hover:text-indigo-700 font-medium">{res}</span>
+                                                        </a>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                        ) : (
-                            <div className="text-center p-8 bg-green-50 rounded-xl border border-green-200">
-                                <p className="text-green-800 font-semibold mb-2">🎉 Outstanding!</p>
-                                <p className="text-green-600">You have all the required skills for {roadmap.company}. You are ready to apply!</p>
-                            </div>
-                        )}
+                        ))}
                     </div>
+                </div>
+            )}
+
+            {!selectedSkill && !loading && (
+                <div className="text-center py-20 bg-white rounded-xl shadow-sm border border-gray-100">
+                    <div className="bg-indigo-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Code className="w-8 h-8 text-indigo-600" />
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900">Choose a Skill Path</h3>
+                    <p className="text-gray-500 mt-1">Select a skill from the dropdown to start your learning journey.</p>
                 </div>
             )}
         </div>
